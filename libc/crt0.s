@@ -11,9 +11,24 @@
 	.org	0x00
 	RET			; Empty function (default for interrupts)
 
-	.org	0x10
-	.byte	0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x01
-	.byte	0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80
+	.org	0x01
+
+.siohandler:
+	ld	HL,#_serialBufferPosition
+	inc	(HL)
+	ld	L,(HL)
+	ld	H,#>_serialBuffer
+	ldh	a,(0x01)
+	ld	(HL),A
+	ld	a,#0x80		; \ Reset IO register
+	ldh	(0x02),a	; /
+	POP	AF
+	POP	HL
+	reti
+
+;	.org	0x10
+;	.byte	0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x01
+;	.byte	0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80
 
 	;; Interrupt vectors
 	.org	0x40		; VBL
@@ -37,8 +52,8 @@
 	.org	0x58		; SIO
 .int_SIO:
 	PUSH	HL
-	LD	HL,#.int_0x58
-	JP	.int
+	PUSH	AF
+	jr	.siohandler
 
 	.org	0x60		; JOY
 .int_JOY:
@@ -235,11 +250,11 @@
 ;	LD	(_malloc_heap_start+0),A
 ;	LD	(_malloc_heap_start+1),A
 ;	LD	(.sys_time+0),A	; Zero the system clock
-;	LD	(.sys_time+1),A	
+;	LD	(.sys_time+1),A
 
 	call	gsinit
 
-;	CALL	.init		
+;	CALL	.init
 
 	EI			; Enable interrupts
 
@@ -251,7 +266,7 @@
 	.else
 	.dw	1
 	.endif
-_exit::	
+_exit::
 99$:
 	HALT
 	JR	99$		; Wait forever
@@ -316,7 +331,7 @@ _sys_time::
 gsinit::
 	.area	_GSINITTAIL
 	ret
-	
+
 	.area	_HOME
 	;; Call the initialization function for the mode specified in HL
 .set_mode::
@@ -404,7 +419,7 @@ gsinit::
 	OR	B
 	RET	Z
 	JR	2$
-	
+
 	;; Add interrupt routine in BC to the interrupt list in HL
 .add_int::
 1$:
@@ -419,7 +434,7 @@ gsinit::
 	LD	(HL),C
 	RET
 
-	
+
 	;; VBlank interrupt
 .vbl:
 	LD	HL,#.sys_time
@@ -427,7 +442,7 @@ gsinit::
 	JR	NZ,2$
 	INC	HL
 	INC	(HL)
-2$:	
+2$:
 	CALL	.refresh_OAM
 
 	LD	A,#0x01
@@ -463,7 +478,7 @@ _display_off::
 	LDH	A,(.LCDC)
 	ADD	A
 	RET	NC		; Return if screen is off
-1$:				; We wait for the *NEXT* VBL 
+1$:				; We wait for the *NEXT* VBL
 	LDH	A,(.LY)
 	CP	#0x92		; Smaller than or equal to 0x91?
 	JR	NC,1$		; Loop until smaller than or equal to 0x91
@@ -537,7 +552,7 @@ _get_mode::
 	LD	HL,#.mode
 	LD	E,(HL)
 	RET
-	
+
 _enable_interrupts::
 	EI
 	RET
@@ -610,7 +625,7 @@ _remove_JOY::
 	CALL	.remove_JOY
 	POP	BC
 	RET
-	
+
 _add_VBL::
 	PUSH	BC
 	LDA	HL,4(SP)	; Skip return address and registers
@@ -710,6 +725,23 @@ banked_ret::
 	ld	(.MBC1_ROM_PAGE),a
 	ld	(__current_bank),a
 	jp	(hl)
-		
+
+
+	.area	_SFR (ABS)
+	.org	0xce00
+_serialBuffer::
+	.ds	256
+
+
+	.area	_HEAP
+_serialBufferPosition::
+	.ds	1
+
+
+	.area	_HEAP
+_serialBufferReadPosition::
+	.ds	1
+
+
 	.area	_HEAP
 _malloc_heap_start::
